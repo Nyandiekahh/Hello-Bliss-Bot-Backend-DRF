@@ -1,0 +1,13 @@
+# ============================================================================
+# DJANGO AUTHENTICATION BACKEND FOR ROBOLEARN
+# ============================================================================
+
+# requirements.txt
+"""
+Django==4.2.7
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.0
+django-cors-headers==4.3.1
+python-decouple==3.8
+Pillow==10.1.0
+django-extensions==3.2.3
