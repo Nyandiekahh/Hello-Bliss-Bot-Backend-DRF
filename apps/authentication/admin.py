@@ -1,4 +1,3 @@
-
 # ============================================================================
 # apps/authentication/admin.py
 # ============================================================================
@@ -15,14 +14,37 @@ class UserAdmin(BaseUserAdmin):
         'total_points', 'level', 'created_at'
     ]
     list_filter = ['role', 'is_verified', 'is_active', 'created_at']
-    search_fields = ['email', 'name']
+    search_fields = ['email', 'name', 'first_name', 'last_name']
     ordering = ['-created_at']
     
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
-        ('Personal Info', {'fields': ('name', 'avatar', 'role')}),
+        ('Personal Info', {
+            'fields': ('name', 'first_name', 'last_name', 'avatar', 'role', 'phone', 'location', 'date_of_birth')
+        }),
+        ('Profile Details', {
+            'fields': ('bio', 'interests', 'learning_goals'),
+            'classes': ('collapse',),
+        }),
+        ('Academic Info', {
+            'fields': ('institution', 'major', 'year_of_study'),
+            'classes': ('collapse',),
+        }),
+        ('Social Profiles', {
+            'fields': ('github_profile', 'linkedin_profile'),
+            'classes': ('collapse',),
+        }),
+        ('Notification Preferences', {
+            'fields': ('email_notifications', 'push_notifications', 'weekly_progress', 'course_updates', 'marketing'),
+            'classes': ('collapse',),
+        }),
+        ('Privacy Settings', {
+            'fields': ('public_profile', 'show_progress', 'show_achievements'),
+            'classes': ('collapse',),
+        }),
         ('Permissions', {
             'fields': ('is_active', 'is_verified', 'is_staff', 'is_superuser', 'groups', 'user_permissions'),
+            'classes': ('collapse',),
         }),
         ('Student Info', {
             'fields': ('enrolled_courses', 'completed_courses', 'total_points', 'level'),
@@ -32,7 +54,7 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('courses', 'total_earnings', 'rating', 'specializations', 'teacher_verified'),
             'classes': ('collapse',),
         }),
-        ('Important dates', {'fields': ('last_login', 'created_at')}),
+        ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
     )
     
     add_fieldsets = (
@@ -42,7 +64,7 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
     
-    readonly_fields = ['created_at', 'last_login']
+    readonly_fields = ['created_at', 'updated_at', 'last_login']
     
     def get_queryset(self, request):
         return super().get_queryset(request).select_related()

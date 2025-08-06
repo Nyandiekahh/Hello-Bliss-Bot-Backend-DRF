@@ -1,4 +1,3 @@
-
 # ============================================================================
 # apps/authentication/urls.py
 # ============================================================================
@@ -18,9 +17,17 @@ urlpatterns = [
     path('verify-otp/', views.verify_otp, name='verify_otp'),
     path('resend-otp/', views.resend_otp, name='resend_otp'),
     
-    # Profile
+    # Profile Management
     path('profile/', views.profile, name='profile'),
     path('profile/update/', views.update_profile, name='update_profile'),
+    path('profile/basic/', views.update_basic_profile, name='update_basic_profile'),
+    path('profile/notifications/', views.update_notification_preferences, name='update_notification_preferences'),
+    path('profile/privacy/', views.update_privacy_settings, name='update_privacy_settings'),
+    
+    # Avatar Management (Updated)
+    path('profile/avatar/', views.upload_avatar, name='upload_avatar'),  # For file uploads
+    path('profile/avatar/url/', views.upload_avatar_url, name='upload_avatar_url'),  # For URL uploads
+    path('profile/avatar/delete/', views.delete_avatar, name='delete_avatar'),
     
     # Newsletter and Waitlist
     path('newsletter/subscribe/', views.NewsletterSubscribeView.as_view(), name='newsletter_subscribe'),

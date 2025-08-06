@@ -1,26 +1,30 @@
-
 # ============================================================================
 # apps/authentication/views.py
 # ============================================================================
 
 from rest_framework import status, generics
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, parser_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.utils import timezone
+from django.core.files.storage import default_storage
+import logging
+
 from .models import User, OTPVerification, Newsletter, Waitlist
 from .serializers import (
     UserSerializer, RegisterSerializer, LoginSerializer,
     OTPVerificationSerializer, ResendOTPSerializer,
-    NewsletterSerializer, WaitlistSerializer
+    NewsletterSerializer, WaitlistSerializer,
+    ProfileSerializer, BasicProfileSerializer,
+    NotificationPreferencesSerializer, PrivacySettingsSerializer,
+    AvatarUploadSerializer
 )
 from .utils import generate_and_send_otp, send_welcome_email
 
-from django.contrib.auth.hashers import make_password
-from rest_framework.decorators import authentication_classes, permission_classes
-from rest_framework.permissions import AllowAny
+logger = logging.getLogger(__name__)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -191,30 +195,214 @@ def logout(request):
         return Response({
             'message': 'Logout successful!'
         }, status=status.HTTP_200_OK)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Logout error: {str(e)}")
         return Response({
-            'error': 'Invalid token.'
-        }, status=status.HTTP_400_BAD_REQUEST)
+            'message': 'Logout successful!'  # Always return success for security
+        }, status=status.HTTP_200_OK)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def profile(request):
-    """Get current user profile"""
-    serializer = UserSerializer(request.user)
-    return Response(serializer.data)
+    """Get current user profile with all fields"""
+    try:
+        serializer = ProfileSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Profile fetch error: {str(e)}")
+        return Response({
+            'error': 'Failed to fetch profile data.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    """Update user profile with all fields"""
+    try:
+        logger.info(f"Profile update request from user {request.user.id}: {request.data}")
+        
+        partial = request.method == 'PATCH'
+        serializer = ProfileSerializer(request.user, data=request.data, partial=partial)
+        
+        if serializer.is_valid():
+            serializer.save()
+            logger.info(f"Profile updated successfully for user {request.user.id}")
+            return Response({
+                'message': 'Profile updated successfully!',
+                'user': serializer.data
+            }, status=status.HTTP_200_OK)
+        else:
+            logger.error(f"Profile update validation errors for user {request.user.id}: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        logger.error(f"Profile update error for user {request.user.id}: {str(e)}")
+        return Response({
+            'error': 'Failed to update profile. Please try again.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['PUT'])
 @permission_classes([IsAuthenticated])
-def update_profile(request):
-    """Update user profile"""
-    serializer = UserSerializer(request.user, data=request.data, partial=True)
-    if serializer.is_valid():
-        serializer.save()
+def update_basic_profile(request):
+    """Update basic profile information (for initial profile setup)"""
+    try:
+        serializer = BasicProfileSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Basic profile updated successfully!',
+                'user': ProfileSerializer(request.user).data
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Basic profile update error: {str(e)}")
         return Response({
-            'message': 'Profile updated successfully!',
-            'user': serializer.data
-        })
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            'error': 'Failed to update basic profile.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_notification_preferences(request):
+    """Update notification preferences only"""
+    try:
+        serializer = NotificationPreferencesSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Notification preferences updated successfully!',
+                'preferences': serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Notification preferences update error: {str(e)}")
+        return Response({
+            'error': 'Failed to update notification preferences.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['PUT'])
+@permission_classes([IsAuthenticated])
+def update_privacy_settings(request):
+    """Update privacy settings only"""
+    try:
+        serializer = PrivacySettingsSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                'message': 'Privacy settings updated successfully!',
+                'settings': serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Privacy settings update error: {str(e)}")
+        return Response({
+            'error': 'Failed to update privacy settings.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def upload_avatar(request):
+    """Upload user avatar image file"""
+    try:
+        logger.info(f"Avatar upload request from user {request.user.id}")
+        
+        if 'avatar' not in request.FILES:
+            return Response({
+                'error': 'No avatar file provided.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Use the avatar upload serializer for validation
+        serializer = AvatarUploadSerializer(data=request.FILES)
+        if serializer.is_valid():
+            # Delete old avatar file if it exists
+            if request.user.avatar:
+                try:
+                    default_storage.delete(request.user.avatar.name)
+                except Exception as e:
+                    logger.warning(f"Could not delete old avatar: {str(e)}")
+            
+            # Save new avatar
+            request.user.avatar = serializer.validated_data['avatar']
+            request.user.avatar_url = None  # Clear any external URL
+            request.user.save()
+            
+            logger.info(f"Avatar uploaded successfully for user {request.user.id}")
+            
+            return Response({
+                'message': 'Avatar uploaded successfully!',
+                'avatar': request.user.avatar_display_url
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+    except Exception as e:
+        logger.error(f"Avatar upload error for user {request.user.id}: {str(e)}")
+        return Response({
+            'error': 'Failed to upload avatar. Please try again.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_avatar_url(request):
+    """Upload user avatar by URL (for external services)"""
+    try:
+        avatar_url = request.data.get('avatar')
+        
+        if not avatar_url:
+            return Response({
+                'error': 'Avatar URL is required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Clear any existing uploaded file
+        if request.user.avatar:
+            try:
+                default_storage.delete(request.user.avatar.name)
+            except Exception as e:
+                logger.warning(f"Could not delete old avatar file: {str(e)}")
+            request.user.avatar = None
+        
+        # Set new avatar URL
+        request.user.avatar_url = avatar_url
+        request.user.save()
+        
+        return Response({
+            'message': 'Avatar updated successfully!',
+            'avatar': request.user.avatar_display_url
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Avatar URL update error: {str(e)}")
+        return Response({
+            'error': 'Failed to update avatar URL.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_avatar(request):
+    """Delete user avatar"""
+    try:
+        # Delete uploaded file if exists
+        if request.user.avatar:
+            try:
+                default_storage.delete(request.user.avatar.name)
+            except Exception as e:
+                logger.warning(f"Could not delete avatar file: {str(e)}")
+            request.user.avatar = None
+        
+        # Clear avatar URL
+        request.user.avatar_url = None
+        request.user.save()
+        
+        return Response({
+            'message': 'Avatar deleted successfully!',
+            'avatar': request.user.avatar_display_url  # Will show fallback avatar
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Avatar deletion error: {str(e)}")
+        return Response({
+            'error': 'Failed to delete avatar.'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # Newsletter and Waitlist Views
 class NewsletterSubscribeView(generics.CreateAPIView):
@@ -438,8 +626,6 @@ def request_email_change(request):
     # Generate and send OTP to new email
     otp_verification = generate_and_send_otp(new_email, 'email_change')
     if otp_verification:
-        # Store the user id and old email in the OTP record for verification
-        # We'll use a custom field or modify the model to track this
         return Response({
             'message': 'Verification code sent to your new email address.',
             'new_email': new_email
@@ -486,7 +672,7 @@ def verify_email_change(request):
         
         return Response({
             'message': 'Email updated successfully!',
-            'user': UserSerializer(user).data
+            'user': ProfileSerializer(user).data
         }, status=status.HTTP_200_OK)
         
     except OTPVerification.DoesNotExist:
