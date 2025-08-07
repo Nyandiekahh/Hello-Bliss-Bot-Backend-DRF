@@ -5,8 +5,8 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import (
-    Badge, StudentBadge, Course, CourseModule, 
-    StudentCourse, StudentModuleProgress, StudentActivity
+    Badge, StudentBadge,  
+     StudentModuleProgress, StudentActivity
 )
 
 User = get_user_model()
@@ -31,49 +31,6 @@ class StudentBadgeSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudentBadge
         fields = ['badge_id', 'name', 'description', 'icon', 'earned_at']
-
-class CourseModuleSerializer(serializers.ModelSerializer):
-    completed = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = CourseModule
-        fields = [
-            'id', 'title', 'description', 'type', 'duration', 
-            'order', 'completed'
-        ]
-    
-    def get_completed(self, obj):
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            progress = StudentModuleProgress.objects.filter(
-                student=request.user,
-                module=obj
-            ).first()
-            return progress.completed if progress else False
-        return False
-
-class CourseSerializer(serializers.ModelSerializer):
-    teacher_name = serializers.CharField(source='teacher.name', read_only=True)
-    teacher_id = serializers.CharField(source='teacher.id', read_only=True)
-    modules = CourseModuleSerializer(many=True, read_only=True)
-    
-    class Meta:
-        model = Course
-        fields = [
-            'id', 'title', 'description', 'teacher_id', 'teacher_name',
-            'price', 'duration', 'level', 'category', 'thumbnail',
-            'rating', 'students_count', 'tags', 'modules'
-        ]
-
-class StudentCourseSerializer(serializers.ModelSerializer):
-    course = CourseSerializer(read_only=True)
-    
-    class Meta:
-        model = StudentCourse
-        fields = [
-            'id', 'course', 'status', 'progress_percentage',
-            'enrolled_at', 'completed_at'
-        ]
 
 class StudentProgressSerializer(serializers.Serializer):
     total_points = serializers.IntegerField()
@@ -104,16 +61,6 @@ class StudentActivitySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'activity_type', 'description', 'points_earned', 'timestamp'
         ]
-
-class EnrollCourseSerializer(serializers.Serializer):
-    course_id = serializers.CharField()
-    
-    def validate_course_id(self, value):
-        try:
-            course = Course.objects.get(id=value, is_active=True)
-            return value
-        except Course.DoesNotExist:
-            raise serializers.ValidationError("Course not found or inactive.")
 
 class ModuleProgressSerializer(serializers.ModelSerializer):
     module_title = serializers.CharField(source='module.title', read_only=True)

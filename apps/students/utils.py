@@ -1,12 +1,14 @@
-# ============================================================================
 # apps/students/utils.py
-# ============================================================================
-
 import math
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from django.db import models
-from .models import Badge, StudentBadge, StudentActivity, StudentModuleProgress, StudentCourse
+
+# Import existing students models only
+from .models import Badge, StudentBadge, StudentActivity
+
+# Import courses app models for course-related functionality
+from apps.courses.models import CourseEnrollment, ModuleProgress
 
 User = get_user_model()
 
@@ -53,15 +55,15 @@ def award_badges(student):
     """Check and award new badges to student"""
     badges_awarded = []
     
-    # Get student stats
+    # Get student stats using courses app models
     total_points = student.total_points
-    completed_courses = StudentCourse.objects.filter(
+    completed_courses = CourseEnrollment.objects.filter(
         student=student, 
         status='completed'
     ).count()
     
-    completed_modules = StudentModuleProgress.objects.filter(
-        student=student,
+    completed_modules = ModuleProgress.objects.filter(
+        enrollment__student=student,
         completed=True
     ).count()
     
@@ -206,7 +208,7 @@ def award_badges(student):
     return badges_awarded
 
 def create_sample_data():
-    """Create sample courses and badges for development"""
+    """Create sample badges for development"""
     
     # Create sample badges
     sample_badges = [
@@ -253,29 +255,21 @@ def create_sample_data():
 def get_student_stats(student):
     """Get comprehensive student statistics"""
     
-    # Basic stats
-    total_courses = StudentCourse.objects.filter(student=student).count()
-    completed_courses = StudentCourse.objects.filter(
-        student=student, 
-        status='completed'
-    ).count()
-    
-    in_progress_courses = StudentCourse.objects.filter(
-        student=student,
-        status='in_progress'
-    ).count()
+    # Basic stats using courses app models
+    enrollments = CourseEnrollment.objects.filter(student=student)
+    total_courses = enrollments.count()
+    completed_courses = enrollments.filter(status='completed').count()
+    in_progress_courses = enrollments.filter(status='in_progress').count()
     
     # Module stats
-    total_modules = StudentModuleProgress.objects.filter(student=student).count()
-    completed_modules = StudentModuleProgress.objects.filter(
-        student=student,
-        completed=True
-    ).count()
+    module_progress_qs = ModuleProgress.objects.filter(enrollment__student=student)
+    total_modules = module_progress_qs.count()
+    completed_modules = module_progress_qs.filter(completed=True).count()
     
     # Time stats
-    total_study_time = StudentModuleProgress.objects.filter(
-        student=student
-    ).aggregate(total=models.Sum('time_spent'))['total'] or 0
+    total_study_time = module_progress_qs.aggregate(
+        total=models.Sum('time_spent')
+    )['total'] or 0
     
     # Activity stats
     total_activities = StudentActivity.objects.filter(student=student).count()

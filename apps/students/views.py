@@ -1,6 +1,5 @@
-# ============================================================================
 # apps/students/views.py
-# ============================================================================
+# Fixed to work with existing students models only
 
 from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
@@ -11,17 +10,16 @@ from django.db.models import Q, Count, Sum, Avg
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 
-from .models import (
-    Badge, StudentBadge, Course, CourseModule, 
-    StudentCourse, StudentModuleProgress, StudentActivity
+# Import from courses app (the primary course models)
+from apps.courses.models import (
+    Course, CourseModule, CourseEnrollment, ModuleProgress
 )
-from .serializers import (
-    BadgeSerializer, StudentBadgeSerializer, CourseSerializer,
-    StudentCourseSerializer, StudentDashboardSerializer,
-    EnrollCourseSerializer, ModuleProgressSerializer,
-    UpdateModuleProgressSerializer, StudentActivitySerializer
+from apps.courses.serializers import (
+    CourseListSerializer, CourseDetailSerializer, CourseEnrollmentSerializer
 )
-from .utils import calculate_student_level, award_badges, log_activity
+
+# Import only existing students app models
+from .models import Badge, StudentBadge, StudentActivity
 
 User = get_user_model()
 
@@ -31,17 +29,16 @@ def student_dashboard(request):
     """Get comprehensive student dashboard data"""
     user = request.user
     
-    # Ensure user is a student
     if user.role != 'student':
         return Response(
             {'error': 'Only students can access this endpoint'}, 
             status=status.HTTP_403_FORBIDDEN
         )
     
-    # Get student's enrolled courses
-    enrolled_courses = StudentCourse.objects.filter(
+    # Get student's enrolled courses (using courses app model)
+    enrolled_courses = CourseEnrollment.objects.filter(
         student=user
-    ).select_related('course', 'course__teacher')[:5]
+    ).select_related('course', 'course__teacher', 'course__category')[:5]
     
     # Get student's badges
     student_badges = StudentBadge.objects.filter(
@@ -51,21 +48,21 @@ def student_dashboard(request):
     # Get recent activities
     recent_activities = StudentActivity.objects.filter(
         student=user
-    )[:10]
+    ).order_by('-timestamp')[:10]
     
     # Calculate progress statistics
-    completed_courses_count = StudentCourse.objects.filter(
+    completed_courses_count = CourseEnrollment.objects.filter(
         student=user, 
         status='completed'
     ).count()
     
-    enrolled_courses_count = StudentCourse.objects.filter(
+    enrolled_courses_count = CourseEnrollment.objects.filter(
         student=user,
         status__in=['enrolled', 'in_progress']
     ).count()
     
-    total_study_time = StudentModuleProgress.objects.filter(
-        student=user
+    total_study_time = ModuleProgress.objects.filter(
+        enrollment__student=user
     ).aggregate(total=Sum('time_spent'))['total'] or 0
     
     progress_data = {
@@ -77,21 +74,66 @@ def student_dashboard(request):
         'badges_count': student_badges.count()
     }
     
+    # Transform data for frontend compatibility
     dashboard_data = {
-        'user': user,
+        'user': {
+            'id': user.id,
+            'name': user.name,
+            'email': user.email,
+            'role': user.role,
+            'avatar': user.avatar_display_url,
+            'created_at': user.created_at.isoformat(),
+        },
         'progress': progress_data,
-        'recent_courses': enrolled_courses,
-        'badges': student_badges,
-        'recent_activities': recent_activities
+        'recent_courses': [
+            {
+                'id': enrollment.id,
+                'course': {
+                    'id': enrollment.course.id,
+                    'title': enrollment.course.title,
+                    'description': enrollment.course.description,
+                    'teacher_name': enrollment.course.teacher.name,
+                    'thumbnail': enrollment.course.thumbnail_display_url,
+                    'category': enrollment.course.category.name if enrollment.course.category else None,
+                    'level': enrollment.course.level,
+                    'rating': enrollment.course.rating,
+                    'students_count': enrollment.course.students_count,
+                },
+                'status': enrollment.status,
+                'progress_percentage': enrollment.progress_percentage,
+                'enrolled_at': enrollment.enrolled_at.isoformat(),
+                'completed_at': enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+            }
+            for enrollment in enrolled_courses
+        ],
+        'badges': [
+            {
+                'badge_id': sb.badge.badge_id,
+                'name': sb.badge.name,
+                'description': sb.badge.description,
+                'icon': sb.badge.icon,
+                'earned_at': sb.earned_at.isoformat(),
+            }
+            for sb in student_badges
+        ],
+        'recent_activities': [
+            {
+                'id': activity.id,
+                'activity_type': activity.activity_type,
+                'description': activity.description,
+                'points_earned': activity.points_earned,
+                'timestamp': activity.timestamp.isoformat(),
+            }
+            for activity in recent_activities
+        ]
     }
     
-    serializer = StudentDashboardSerializer(dashboard_data)
-    return Response(serializer.data)
+    return Response(dashboard_data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def student_courses(request):
-    """Get all courses for a student"""
+    """Get all courses enrolled by student"""
     user = request.user
     
     if user.role != 'student':
@@ -103,67 +145,40 @@ def student_courses(request):
     # Get query parameters
     status_filter = request.GET.get('status', None)
     
-    queryset = StudentCourse.objects.filter(student=user).select_related('course', 'course__teacher')
+    queryset = CourseEnrollment.objects.filter(student=user).select_related('course', 'course__teacher', 'course__category')
     
     if status_filter:
         queryset = queryset.filter(status=status_filter)
     
-    serializer = StudentCourseSerializer(queryset, many=True, context={'request': request})
-    return Response(serializer.data)
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def enroll_course(request):
-    """Enroll student in a course"""
-    user = request.user
+    # Transform for frontend
+    enrollments_data = []
+    for enrollment in queryset:
+        enrollments_data.append({
+            'id': enrollment.id,
+            'course': {
+                'id': enrollment.course.id,
+                'title': enrollment.course.title,
+                'description': enrollment.course.description,
+                'teacher_id': enrollment.course.teacher.id,
+                'teacher_name': enrollment.course.teacher.name,
+                'teacher_avatar': enrollment.course.teacher.avatar_display_url,
+                'price': enrollment.course.price,
+                'duration': enrollment.course.duration,
+                'level': enrollment.course.level,
+                'category': enrollment.course.category.slug if enrollment.course.category else None,
+                'category_name': enrollment.course.category.name if enrollment.course.category else None,
+                'thumbnail': enrollment.course.thumbnail_display_url,
+                'rating': enrollment.course.rating,
+                'students_count': enrollment.course.students_count,
+                'tags': enrollment.course.tags,
+            },
+            'status': enrollment.status,
+            'progress_percentage': enrollment.progress_percentage,
+            'enrolled_at': enrollment.enrolled_at.isoformat(),
+            'completed_at': enrollment.completed_at.isoformat() if enrollment.completed_at else None,
+        })
     
-    if user.role != 'student':
-        return Response(
-            {'error': 'Only students can enroll in courses'}, 
-            status=status.HTTP_403_FORBIDDEN
-        )
-    
-    serializer = EnrollCourseSerializer(data=request.data)
-    if serializer.is_valid():
-        course_id = serializer.validated_data['course_id']
-        course = get_object_or_404(Course, id=course_id, is_active=True)
-        
-        # Check if already enrolled
-        if StudentCourse.objects.filter(student=user, course=course).exists():
-            return Response(
-                {'error': 'Already enrolled in this course'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Create enrollment
-        enrollment = StudentCourse.objects.create(
-            student=user,
-            course=course,
-            status='enrolled'
-        )
-        
-        # Update course student count
-        course.students_count += 1
-        course.save()
-        
-        # Log activity
-        log_activity(
-            user, 
-            'course_start', 
-            f'Enrolled in {course.title}',
-            {'course_id': course_id},
-            points=10
-        )
-        
-        # Update user points
-        user.total_points += 10
-        user.level = calculate_student_level(user.total_points)
-        user.save()
-        
-        serializer = StudentCourseSerializer(enrollment, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-    
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    return Response(enrollments_data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -177,24 +192,34 @@ def course_progress(request, course_id):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    course = get_object_or_404(Course, id=course_id, is_active=True)
-    enrollment = get_object_or_404(StudentCourse, student=user, course=course)
+    course = get_object_or_404(Course, id=course_id, status='published')
+    enrollment = get_object_or_404(CourseEnrollment, student=user, course=course)
     
     # Get module progress
-    module_progress = StudentModuleProgress.objects.filter(
-        student=user,
-        module__course=course
+    module_progress = ModuleProgress.objects.filter(
+        enrollment=enrollment
     ).select_related('module')
     
-    # Get course modules
-    course_serializer = CourseSerializer(course, context={'request': request})
-    progress_serializer = ModuleProgressSerializer(module_progress, many=True)
-    enrollment_serializer = StudentCourseSerializer(enrollment)
-    
     return Response({
-        'course': course_serializer.data,
-        'enrollment': enrollment_serializer.data,
-        'module_progress': progress_serializer.data
+        'course': CourseDetailSerializer(course, context={'request': request}).data,
+        'enrollment': CourseEnrollmentSerializer(enrollment).data,
+        'module_progress': [
+            {
+                'module': {
+                    'id': mp.module.id,
+                    'title': mp.module.title,
+                    'description': mp.module.description,
+                    'type': mp.module.type,
+                    'duration': mp.module.duration,
+                    'order': mp.module.order,
+                },
+                'completed': mp.completed,
+                'score': mp.score,
+                'time_spent': mp.time_spent,
+                'last_accessed': mp.last_accessed.isoformat(),
+            }
+            for mp in module_progress
+        ]
     })
 
 @api_view(['POST'])
@@ -209,105 +234,100 @@ def update_module_progress(request):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    serializer = UpdateModuleProgressSerializer(data=request.data)
-    if serializer.is_valid():
-        module_id = serializer.validated_data['module_id']
-        completed = serializer.validated_data['completed']
-        score = serializer.validated_data.get('score')
-        time_spent = serializer.validated_data['time_spent']
-        
-        module = get_object_or_404(CourseModule, id=module_id, is_active=True)
-        
-        # Check if student is enrolled in the course
-        if not StudentCourse.objects.filter(student=user, course=module.course).exists():
-            return Response(
-                {'error': 'Not enrolled in this course'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Update or create progress
-        progress, created = StudentModuleProgress.objects.get_or_create(
-            student=user,
-            module=module,
-            defaults={
-                'completed': completed,
-                'score': score,
-                'time_spent': time_spent,
-                'last_accessed': timezone.now()
-            }
-        )
-        
-        if not created:
-            # Update existing progress
-            was_completed = progress.completed
-            progress.completed = completed
-            progress.score = score
-            progress.time_spent += time_spent
-            progress.last_accessed = timezone.now()
-            
-            if completed and not was_completed:
-                progress.completed_at = timezone.now()
-        else:
-            if completed:
-                progress.completed_at = timezone.now()
-        
-        progress.save()
-        
-        # Award points for completion
-        if completed and (created or not progress.completed):
-            points = 20 if module.type == 'quiz' else 10
-            user.total_points += points
-            user.level = calculate_student_level(user.total_points)
-            user.save()
-            
-            # Log activity
-            log_activity(
-                user,
-                'module_complete',
-                f'Completed {module.title}',
-                {'module_id': module_id, 'course_id': str(module.course.id)},
-                points
-            )
-        
-        # Check if course is completed
-        course_modules_count = CourseModule.objects.filter(course=module.course, is_active=True).count()
-        completed_modules_count = StudentModuleProgress.objects.filter(
-            student=user,
-            module__course=module.course,
-            completed=True
-        ).count()
-        
-        # Update course progress
-        enrollment = StudentCourse.objects.get(student=user, course=module.course)
-        enrollment.progress_percentage = (completed_modules_count / course_modules_count) * 100
-        
-        if enrollment.progress_percentage >= 100 and enrollment.status != 'completed':
-            enrollment.status = 'completed'
-            enrollment.completed_at = timezone.now()
-            
-            # Award course completion points
-            user.total_points += 100
-            user.level = calculate_student_level(user.total_points)
-            user.save()
-            
-            # Log activity
-            log_activity(
-                user,
-                'course_complete',
-                f'Completed {module.course.title}',
-                {'course_id': str(module.course.id)},
-                100
-            )
-        
-        enrollment.save()
-        
-        # Check for new badges
-        award_badges(user)
-        
-        serializer = ModuleProgressSerializer(progress)
-        return Response(serializer.data)
+    module_id = request.data.get('module_id')
+    completed = request.data.get('completed', False)
+    score = request.data.get('score')
+    time_spent = request.data.get('time_spent', 0)
     
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    if not module_id:
+        return Response(
+            {'error': 'module_id is required'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    module = get_object_or_404(CourseModule, id=module_id, is_active=True)
+    
+    # Check if student is enrolled in the course
+    try:
+        enrollment = CourseEnrollment.objects.get(student=user, course=module.course)
+    except CourseEnrollment.DoesNotExist:
+        return Response(
+            {'error': 'Not enrolled in this course'}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Update or create progress
+    progress, created = ModuleProgress.objects.get_or_create(
+        enrollment=enrollment,
+        module=module,
+        defaults={
+            'completed': completed,
+            'score': score,
+            'time_spent': time_spent,
+            'last_accessed': timezone.now()
+        }
+    )
+    
+    if not created:
+        # Update existing progress
+        was_completed = progress.completed
+        progress.completed = completed
+        if score is not None:
+            progress.score = score
+        progress.time_spent += time_spent
+        progress.last_accessed = timezone.now()
+        
+        if completed and not was_completed:
+            progress.completed_at = timezone.now()
+    else:
+        if completed:
+            progress.completed_at = timezone.now()
+    
+    progress.save()
+    
+    # Update enrollment progress
+    enrollment.update_progress()
+    
+    # Award points and log activity if module completed
+    if completed and (created or not progress.completed):
+        points = 20 if module.type == 'quiz' else 10
+        user.total_points += points
+        
+        # Simple level calculation without utils
+        if user.total_points < 100:
+            user.level = 1
+        elif user.total_points < 300:
+            user.level = 2
+        elif user.total_points < 600:
+            user.level = 3
+        elif user.total_points < 1000:
+            user.level = 4
+        elif user.total_points < 1500:
+            user.level = 5
+        else:
+            user.level = min(10, 5 + (user.total_points - 1500) // 500)
+        
+        user.save()
+        
+        # Log activity
+        StudentActivity.objects.create(
+            student=user,
+            activity_type='module_complete',
+            description=f'Completed {module.title}',
+            metadata={'module_id': module_id, 'course_id': str(module.course.id)},
+            points_earned=points
+        )
+    
+    return Response({
+        'module': {
+            'id': progress.module.id,
+            'title': progress.module.title,
+        },
+        'completed': progress.completed,
+        'score': progress.score,
+        'time_spent': progress.time_spent,
+        'last_accessed': progress.last_accessed.isoformat(),
+    })
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -323,10 +343,22 @@ def student_badges(request):
     
     student_badges = StudentBadge.objects.filter(
         student=user
-    ).select_related('badge')
+    ).select_related('badge').order_by('-earned_at')
     
-    serializer = StudentBadgeSerializer(student_badges, many=True)
-    return Response(serializer.data)
+    badges_data = [
+        {
+            'id': sb.badge.id,
+            'badge_id': sb.badge.badge_id,
+            'name': sb.badge.name,
+            'description': sb.badge.description,
+            'icon': sb.badge.icon,
+            'points_required': getattr(sb.badge, 'points_required', 0),
+            'earned_at': sb.earned_at.isoformat(),
+        }
+        for sb in student_badges
+    ]
+    
+    return Response(badges_data)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -340,40 +372,18 @@ def student_activities(request):
             status=status.HTTP_403_FORBIDDEN
         )
     
-    activities = StudentActivity.objects.filter(student=user)[:20]
-    serializer = StudentActivitySerializer(activities, many=True)
-    return Response(serializer.data)
-
-class CourseListView(generics.ListAPIView):
-    """List all available courses"""
-    queryset = Course.objects.filter(is_active=True)
-    serializer_class = CourseSerializer
-    permission_classes = [IsAuthenticated]
+    activities = StudentActivity.objects.filter(student=user).order_by('-timestamp')[:20]
     
-    def get_queryset(self):
-        queryset = super().get_queryset()
-        
-        # Filter by category
-        category = self.request.query_params.get('category', None)
-        if category:
-            queryset = queryset.filter(category=category)
-        
-        # Filter by level
-        level = self.request.query_params.get('level', None)
-        if level:
-            queryset = queryset.filter(level=level)
-        
-        # Search by title or description
-        search = self.request.query_params.get('search', None)
-        if search:
-            queryset = queryset.filter(
-                Q(title__icontains=search) | Q(description__icontains=search)
-            )
-        
-        return queryset.select_related('teacher')
-
-class CourseDetailView(generics.RetrieveAPIView):
-    """Get detailed course information"""
-    queryset = Course.objects.filter(is_active=True)
-    serializer_class = CourseSerializer
-    permission_classes = [IsAuthenticated]
+    activities_data = [
+        {
+            'id': activity.id,
+            'activity_type': activity.activity_type,
+            'description': activity.description,
+            'metadata': activity.metadata,
+            'points_earned': activity.points_earned,
+            'timestamp': activity.timestamp.isoformat(),
+        }
+        for activity in activities
+    ]
+    
+    return Response(activities_data)
