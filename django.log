@@ -3149,3 +3149,44 @@ INFO 2025-08-07 03:43:45,555 basehttp 159340 125973750073024 "GET /api/courses/e
 INFO 2025-08-07 03:43:45,583 basehttp 159340 125973777348288 "GET /api/students/dashboard/ HTTP/1.1" 200 769
 INFO 2025-08-07 03:43:47,094 basehttp 159340 125973777348288 "GET /api/courses/categories/ HTTP/1.1" 200 424
 INFO 2025-08-07 03:43:47,106 basehttp 159340 125973750073024 "GET /api/courses/courses/?ordering=-created_at HTTP/1.1" 200 1642
+INFO 2025-08-07 08:48:12,689 basehttp 159340 125973750073024 "OPTIONS /api/courses/categories/ HTTP/1.1" 200 0
+INFO 2025-08-07 08:48:12,682 basehttp 159340 125973777348288 "OPTIONS /api/auth/profile/ HTTP/1.1" 200 0
+INFO 2025-08-07 08:48:12,711 basehttp 159340 125973758465728 "OPTIONS /api/courses/courses/?ordering=-created_at HTTP/1.1" 200 0
+WARNING 2025-08-07 08:48:13,055 log 159340 125973758465728 Unauthorized: /api/courses/courses/
+WARNING 2025-08-07 08:48:13,056 log 159340 125973750073024 Unauthorized: /api/auth/profile/
+WARNING 2025-08-07 08:48:13,063 log 159340 125973777348288 Unauthorized: /api/courses/categories/
+WARNING 2025-08-07 08:48:13,065 basehttp 159340 125973758465728 "GET /api/courses/courses/?ordering=-created_at HTTP/1.1" 401 183
+WARNING 2025-08-07 08:48:13,083 basehttp 159340 125973750073024 "GET /api/auth/profile/ HTTP/1.1" 401 183
+WARNING 2025-08-07 08:48:13,086 basehttp 159340 125973777348288 "GET /api/courses/categories/ HTTP/1.1" 401 183
+INFO 2025-08-07 08:48:41,547 basehttp 159340 125973777348288 "OPTIONS /api/auth/login/ HTTP/1.1" 200 0
+INFO 2025-08-07 08:48:43,124 basehttp 159340 125973777348288 "POST /api/auth/login/ HTTP/1.1" 200 890
+INFO 2025-08-07 08:48:43,281 basehttp 159340 125973777348288 "OPTIONS /api/students/dashboard/ HTTP/1.1" 200 0
+INFO 2025-08-07 08:48:43,502 basehttp 159340 125973777348288 "GET /api/students/dashboard/ HTTP/1.1" 200 769
+INFO 2025-08-07 08:48:53,328 basehttp 159340 125973777348288 "GET /api/courses/categories/ HTTP/1.1" 200 424
+INFO 2025-08-07 08:48:53,400 basehttp 159340 125973750073024 "GET /api/courses/courses/?ordering=-created_at HTTP/1.1" 200 1642
+INFO 2025-08-07 08:49:24,413 basehttp 159340 125973750073024 "GET /api/courses/categories/ HTTP/1.1" 200 424
+INFO 2025-08-07 08:49:24,474 basehttp 159340 125973777348288 "GET /api/courses/courses/?ordering=-created_at HTTP/1.1" 200 1642
+INFO 2025-09-04 21:59:18,469 autoreload 2073 129492427677824 Watching for file changes with StatReloader
+INFO 2025-09-07 05:43:34,963 autoreload 19547 123799595606144 Watching for file changes with StatReloader
+INFO 2025-09-07 05:44:15,082 basehttp 19547 123799470077632 "OPTIONS /api/auth/login/ HTTP/1.1" 200 0
+WARNING 2025-09-07 05:44:16,763 log 19547 123799470077632 Bad Request: /api/auth/login/
+WARNING 2025-09-07 05:44:16,764 basehttp 19547 123799470077632 "POST /api/auth/login/ HTTP/1.1" 400 51
+WARNING 2025-09-07 05:44:26,487 log 19547 123799470077632 Bad Request: /api/auth/login/
+WARNING 2025-09-07 05:44:26,488 basehttp 19547 123799470077632 "POST /api/auth/login/ HTTP/1.1" 400 51
+INFO 2025-09-07 05:44:37,406 basehttp 19547 123799470077632 "OPTIONS /api/auth/forgot-password/ HTTP/1.1" 200 0
+ERROR 2025-09-07 05:44:39,351 utils 19547 123799470077632 Failed to send OTP email to einsteinmokua100@gmail.com: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials ffacd0b85a97d-3d690f2edf1sm26401575f8f.16 - gsmtp')
+ERROR 2025-09-07 05:44:39,394 log 19547 123799470077632 Internal Server Error: /api/auth/forgot-password/
+ERROR 2025-09-07 05:44:39,405 basehttp 19547 123799470077632 "POST /api/auth/forgot-password/ HTTP/1.1" 500 66
+WARNING 2025-09-07 05:45:16,855 log 19547 123799470077632 Bad Request: /api/auth/login/
+WARNING 2025-09-07 05:45:16,858 basehttp 19547 123799470077632 "POST /api/auth/login/ HTTP/1.1" 400 51
+ERROR 2025-09-07 05:45:26,388 utils 19547 123799470077632 Failed to send OTP email to einsteinmokua1@gmail.com: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5b1f17b1804b1-45b6f30fe02sm462591325e9.18 - gsmtp')
+ERROR 2025-09-07 05:45:26,428 log 19547 123799470077632 Internal Server Error: /api/auth/forgot-password/
+ERROR 2025-09-07 05:45:26,433 basehttp 19547 123799470077632 "POST /api/auth/forgot-password/ HTTP/1.1" 500 66
+INFO 2025-09-07 05:46:59,001 basehttp 19547 123799470077632 "OPTIONS /api/auth/register/ HTTP/1.1" 200 0
+WARNING 2025-09-07 05:46:59,140 log 19547 123799470077632 Bad Request: /api/auth/register/
+WARNING 2025-09-07 05:46:59,141 basehttp 19547 123799470077632 "POST /api/auth/register/ HTTP/1.1" 400 52
+WARNING 2025-09-07 05:47:03,979 log 19547 123799470077632 Bad Request: /api/auth/register/
+WARNING 2025-09-07 05:47:03,980 basehttp 19547 123799470077632 "POST /api/auth/register/ HTTP/1.1" 400 52
+ERROR 2025-09-07 05:47:22,358 utils 19547 123799470077632 Failed to send OTP email to nmokua.e@gmail.com: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5b1f17b1804b1-45dd3aadbcesm118334115e9.17 - gsmtp')
+ERROR 2025-09-07 05:47:22,445 log 19547 123799470077632 Internal Server Error: /api/auth/register/
+ERROR 2025-09-07 05:47:22,454 basehttp 19547 123799470077632 "POST /api/auth/register/ HTTP/1.1" 500 64
